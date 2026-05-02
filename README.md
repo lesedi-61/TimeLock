@@ -146,11 +146,9 @@ vaulted/
 
 ## Screenshots
 
-> *Add screenshots here once deployed.*
-
 | Login | Dashboard | Sealed Capsule |
 |---|---|---|
-| ![login]() | ![dashboard]() | ![capsule]() |
+| ![login](./login.png) | ![dashboard](./dashboard.png) | ![capsule](./capsule.png) |
 
 ---
 
