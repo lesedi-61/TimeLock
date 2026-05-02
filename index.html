@@ -1,0 +1,958 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Vaulted — Digital Time Capsule</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,500;0,700;1,400;1,500&family=Jost:wght@300;400;500&display=swap" rel="stylesheet" />
+
+<!-- ✦ Supabase JS client (CDN) — no backend needed -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+<style>
+/* ─── Reset & Root ─────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg:         #0b0d14;
+  --bg2:        #10131e;
+  --bg3:        #161a28;
+  --surface:    #1d2235;
+  --surface2:   #242840;
+  --border:     rgba(255,255,255,0.07);
+  --border2:    rgba(255,255,255,0.14);
+  --gold:       #c9a84c;
+  --gold-light: #e8c97a;
+  --gold-dim:   rgba(201,168,76,0.18);
+  --text:       #e8e4dc;
+  --text-muted: #7a8099;
+  --text-dim:   #4a5068;
+  --sage:       #6b8f71;
+  --rose:       #c4747a;
+  --radius:     12px;
+  --radius-lg:  18px;
+}
+html, body { height: 100%; font-family: 'Jost', sans-serif; background: var(--bg); color: var(--text); overflow-x: hidden; }
+
+/* ─── Page system ───────────────────────────────────────── */
+.page { display: none; min-height: 100vh; }
+.page.active { display: flex; animation: fadeIn 0.45s ease both; }
+#page-dashboard.active { display: flex; flex-direction: column; }
+@keyframes fadeIn  { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+@keyframes slideUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: none; } }
+@keyframes starPulse { 0%,100% { opacity: 0.2; } 50% { opacity: 0.8; } }
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes shimmer { 0% { background-position: -400px 0; } 100% { background-position: 400px 0; } }
+
+/* ─── Stars ─────────────────────────────────────────────── */
+.stars-bg { position: fixed; inset: 0; pointer-events: none; z-index: 0; }
+.star { position: absolute; border-radius: 50%; background: #fff; animation: starPulse var(--dur,3s) ease-in-out infinite var(--delay,0s); }
+
+/* ─── Auth Layout ───────────────────────────────────────── */
+.auth-page { align-items: stretch; position: relative; z-index: 1; }
+.auth-left  { flex: 1; display: flex; flex-direction: column; justify-content: center; align-items: center; padding: 3rem 4rem; background: var(--bg); }
+.auth-right { width: 420px; flex-shrink: 0; background: var(--bg2); border-left: 1px solid var(--border); display: flex; flex-direction: column; justify-content: center; padding: 3rem; }
+
+/* Brand */
+.brand { display: flex; align-items: center; gap: 12px; margin-bottom: 3.5rem; }
+.brand-mark { width: 38px; height: 38px; border: 1.5px solid var(--gold); border-radius: 8px; display: flex; align-items: center; justify-content: center; }
+.brand-mark::before { content: '✦'; font-size: 16px; color: var(--gold); }
+.brand-name { font-family: 'Playfair Display', serif; font-size: 22px; font-weight: 500; letter-spacing: 1px; }
+
+/* Hero */
+.auth-hero { max-width: 480px; }
+.auth-hero-tag { font-size: 11px; letter-spacing: 4px; text-transform: uppercase; color: var(--gold); margin-bottom: 1.25rem; }
+.auth-hero h1 { font-family: 'Playfair Display', serif; font-size: 52px; font-weight: 400; line-height: 1.12; margin-bottom: 1.5rem; }
+.auth-hero h1 em { font-style: italic; color: var(--gold-light); }
+.auth-hero p { font-size: 16px; font-weight: 300; line-height: 1.8; color: var(--text-muted); max-width: 380px; }
+
+/* Preview cards */
+.preview-cards { margin-top: 3.5rem; width: 100%; max-width: 420px; }
+.preview-card { background: var(--surface); border: 1px solid var(--border2); border-radius: var(--radius-lg); padding: 1.25rem 1.5rem; }
+.preview-card + .preview-card { margin-top: 0.75rem; }
+.pc-top { display: flex; align-items: center; gap: 10px; margin-bottom: 0.75rem; }
+.pc-lock { width: 28px; height: 28px; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 12px; flex-shrink: 0; }
+.pc-lock.locked   { background: var(--gold-dim); }
+.pc-lock.unlocked { background: rgba(107,143,113,0.2); }
+.pc-title { font-family: 'Playfair Display', serif; font-size: 16px; }
+.pc-date  { font-size: 11px; color: var(--text-muted); margin-left: auto; }
+.pc-bar   { height: 4px; border-radius: 2px; background: var(--border); overflow: hidden; }
+.pc-bar-fill { height: 100%; background: linear-gradient(90deg, var(--gold), var(--gold-light)); border-radius: 2px; }
+.pc-msg { font-size: 13px; color: var(--text-muted); line-height: 1.6; font-style: italic; margin-top: 0.75rem; }
+
+/* Forms */
+.form-header { margin-bottom: 2rem; }
+.form-header h2 { font-family: 'Playfair Display', serif; font-size: 30px; font-weight: 400; margin-bottom: 0.4rem; }
+.form-header p { font-size: 14px; color: var(--text-muted); font-weight: 300; }
+.field { margin-bottom: 1.25rem; }
+.field label { display: block; font-size: 11px; letter-spacing: 2px; text-transform: uppercase; font-weight: 500; color: var(--text-muted); margin-bottom: 0.5rem; }
+.field input, .field-input { width: 100%; background: var(--surface); border: 1px solid var(--border2); border-radius: var(--radius); padding: 0.8rem 1rem; font-family: 'Jost', sans-serif; font-size: 15px; font-weight: 300; color: var(--text); outline: none; transition: border-color 0.2s, background 0.2s; }
+.field input::placeholder { color: var(--text-dim); }
+.field input:focus, .field-input:focus { border-color: var(--gold); background: var(--surface2); }
+.field-row { display: flex; gap: 12px; }
+.field-row .field { flex: 1; }
+.form-msg { border-radius: 10px; padding: 0.75rem 1rem; font-size: 13px; margin-bottom: 1.25rem; display: none; line-height: 1.5; }
+.form-msg.error   { background: rgba(196,116,122,0.12); border: 1px solid rgba(196,116,122,0.3); color: #e09098; }
+.form-msg.success { background: rgba(107,143,113,0.12); border: 1px solid rgba(107,143,113,0.3); color: #8db894; }
+.form-msg.show    { display: block; }
+.btn-primary { width: 100%; padding: 0.95rem; background: var(--gold); border: none; border-radius: var(--radius); font-family: 'Jost', sans-serif; font-size: 15px; font-weight: 500; letter-spacing: 1px; color: var(--bg); cursor: pointer; transition: background 0.2s, transform 0.15s; margin-top: 0.5rem; display: flex; align-items: center; justify-content: center; gap: 8px; }
+.btn-primary:hover:not(:disabled) { background: var(--gold-light); }
+.btn-primary:active:not(:disabled) { transform: scale(0.985); }
+.btn-primary:disabled { opacity: 0.6; cursor: not-allowed; }
+.spinner { width: 16px; height: 16px; border: 2px solid rgba(11,13,20,0.3); border-top-color: var(--bg); border-radius: 50%; animation: spin 0.6s linear infinite; display: none; flex-shrink: 0; }
+.divider { text-align: center; position: relative; margin: 1.5rem 0; font-size: 12px; color: var(--text-dim); }
+.divider::before, .divider::after { content: ''; position: absolute; top: 50%; width: 45%; height: 1px; background: var(--border); }
+.divider::before { left: 0; } .divider::after { right: 0; }
+.form-footer { margin-top: 1.75rem; text-align: center; font-size: 13px; color: var(--text-muted); }
+.form-footer a { color: var(--gold); text-decoration: none; cursor: pointer; }
+.form-footer a:hover { color: var(--gold-light); }
+.pw-strength { margin-top: 0.5rem; }
+.pw-strength-bar { height: 3px; background: var(--border); border-radius: 2px; overflow: hidden; margin-bottom: 0.25rem; }
+.pw-strength-fill { height: 100%; border-radius: 2px; transition: width 0.3s, background 0.3s; width: 0; }
+.pw-strength-text { font-size: 11px; color: var(--text-dim); }
+
+/* How card */
+.how-card { background: var(--surface); border: 1px solid var(--border2); border-radius: 16px; padding: 1.5rem; max-width: 420px; margin-top: 3rem; }
+.how-step { display: flex; align-items: flex-start; gap: 12px; }
+.how-step + .how-step { margin-top: 1.1rem; }
+.how-num { width: 28px; height: 28px; border-radius: 8px; background: var(--gold-dim); display: flex; align-items: center; justify-content: center; font-size: 13px; flex-shrink: 0; color: var(--gold); font-weight: 500; }
+.how-title { font-size: 14px; font-weight: 500; margin-bottom: 2px; }
+.how-desc  { font-size: 13px; color: var(--text-muted); }
+
+/* Dashboard */
+.dash-nav { height: 64px; border-bottom: 1px solid var(--border); display: flex; align-items: center; padding: 0 2.5rem; gap: 2rem; flex-shrink: 0; background: rgba(11,13,20,0.95); backdrop-filter: blur(12px); position: sticky; top: 0; z-index: 50; }
+.dash-brand { display: flex; align-items: center; gap: 10px; margin-right: auto; }
+.dash-brand-mark { width: 30px; height: 30px; border: 1.5px solid var(--gold); border-radius: 7px; display: flex; align-items: center; justify-content: center; font-size: 13px; color: var(--gold); }
+.dash-brand-name { font-family: 'Playfair Display', serif; font-size: 18px; font-weight: 500; }
+.nav-btn-new { padding: 0.5rem 1.1rem; background: var(--gold); border: none; border-radius: 8px; font-family: 'Jost', sans-serif; font-size: 13px; font-weight: 500; color: var(--bg); cursor: pointer; transition: background 0.2s; }
+.nav-btn-new:hover { background: var(--gold-light); }
+.nav-avatar { width: 34px; height: 34px; border-radius: 50%; background: var(--gold-dim); border: 1.5px solid var(--gold); display: flex; align-items: center; justify-content: center; font-family: 'Playfair Display', serif; font-size: 13px; color: var(--gold); cursor: pointer; margin-left: 0.5rem; }
+.dash-main { display: flex; flex: 1; min-height: 0; overflow: hidden; }
+.dash-sidebar { width: 260px; flex-shrink: 0; border-right: 1px solid var(--border); padding: 2rem 1.5rem; display: flex; flex-direction: column; gap: 0.25rem; overflow-y: auto; background: var(--bg2); }
+.sidebar-label { font-size: 10px; letter-spacing: 3px; text-transform: uppercase; color: var(--text-dim); font-weight: 500; padding: 0.5rem 0.75rem 0.25rem; margin-top: 0.5rem; }
+.sidebar-item { display: flex; align-items: center; gap: 10px; padding: 0.6rem 0.75rem; border-radius: 9px; font-size: 14px; font-weight: 300; color: var(--text-muted); cursor: pointer; transition: background 0.15s, color 0.15s; }
+.sidebar-item:hover, .sidebar-item.active { background: var(--surface); color: var(--text); }
+.sidebar-item .si-icon { font-size: 15px; width: 20px; text-align: center; }
+.sidebar-count { margin-left: auto; font-size: 11px; background: var(--surface2); padding: 2px 8px; border-radius: 100px; color: var(--text-dim); }
+.dash-content { flex: 1; overflow-y: auto; padding: 2.5rem 3rem; }
+.stats-row { display: grid; grid-template-columns: repeat(4,1fr); gap: 1rem; margin-bottom: 2.5rem; animation: slideUp 0.5s ease 0.1s both; }
+.stat-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 1.25rem 1.5rem; position: relative; overflow: hidden; }
+.stat-card::after { content: ''; position: absolute; bottom: 0; left: 0; right: 0; height: 2px; background: var(--accent-color, var(--border)); opacity: 0.5; }
+.stat-card.gold-accent { --accent-color: var(--gold); }
+.stat-card.sage-accent { --accent-color: var(--sage); }
+.stat-card.rose-accent { --accent-color: var(--rose); }
+.stat-card.dim-accent  { --accent-color: var(--text-dim); }
+.stat-label { font-size: 11px; letter-spacing: 2px; text-transform: uppercase; color: var(--text-muted); font-weight: 500; margin-bottom: 0.75rem; }
+.stat-value { font-family: 'Playfair Display', serif; font-size: 34px; font-weight: 400; line-height: 1; margin-bottom: 0.25rem; }
+.stat-sub   { font-size: 12px; color: var(--text-dim); }
+.dash-greeting { margin-bottom: 2.5rem; animation: slideUp 0.5s ease both; }
+.dash-greeting-tag { font-size: 11px; letter-spacing: 3px; text-transform: uppercase; color: var(--gold); margin-bottom: 0.5rem; }
+.dash-greeting h2 { font-family: 'Playfair Display', serif; font-size: 36px; font-weight: 400; margin-bottom: 0.4rem; }
+.dash-greeting h2 em { font-style: italic; color: var(--gold-light); }
+.dash-greeting p { font-size: 14px; color: var(--text-muted); }
+.section-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.25rem; }
+.section-title  { font-family: 'Playfair Display', serif; font-size: 22px; font-weight: 400; }
+.capsules-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px,1fr)); gap: 1rem; margin-bottom: 3rem; }
+.capsule-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 1.5rem; cursor: pointer; transition: border-color 0.2s, transform 0.2s; }
+.capsule-card:hover { border-color: var(--border2); transform: translateY(-2px); }
+.capsule-card.is-unlocked { border-color: rgba(107,143,113,0.3); }
+.capsule-card.is-unlocked:hover { border-color: var(--sage); }
+.card-top  { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 1rem; }
+.card-icon { width: 40px; height: 40px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 18px; flex-shrink: 0; }
+.card-icon.locked   { background: var(--gold-dim); }
+.card-icon.unlocked { background: rgba(107,143,113,0.15); }
+.card-icon.soon     { background: rgba(196,116,122,0.15); }
+.card-meta  { flex: 1; min-width: 0; }
+.card-title { font-family: 'Playfair Display', serif; font-size: 17px; font-weight: 400; margin-bottom: 0.2rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.card-created { font-size: 12px; color: var(--text-dim); }
+.card-badge { padding: 3px 10px; border-radius: 100px; font-size: 11px; flex-shrink: 0; }
+.badge-locked   { background: var(--gold-dim); color: var(--gold); }
+.badge-unlocked { background: rgba(107,143,113,0.2); color: var(--sage); }
+.badge-soon     { background: rgba(196,116,122,0.15); color: var(--rose); }
+.card-preview { font-size: 13px; color: var(--text-muted); line-height: 1.65; font-style: italic; margin-bottom: 1.1rem; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.card-preview.blurred { filter: blur(4px); user-select: none; }
+.card-progress { margin-bottom: 1rem; }
+.progress-label { display: flex; justify-content: space-between; font-size: 11px; color: var(--text-dim); margin-bottom: 0.4rem; }
+.progress-bar  { height: 3px; background: var(--border); border-radius: 2px; overflow: hidden; }
+.progress-fill { height: 100%; border-radius: 2px; transition: width 0.6s; }
+.fill-gold { background: linear-gradient(90deg, var(--gold), var(--gold-light)); }
+.fill-sage { background: var(--sage); }
+.fill-rose { background: var(--rose); }
+.card-footer { display: flex; align-items: center; justify-content: space-between; padding-top: 1rem; border-top: 1px solid var(--border); }
+.card-mood       { font-size: 12px; color: var(--text-dim); }
+.card-unlock-date { font-size: 12px; color: var(--text-muted); display: flex; align-items: center; gap: 5px; }
+.empty-state { grid-column: 1 / -1; text-align: center; padding: 4rem 2rem; }
+.empty-state .es-icon { font-size: 48px; display: block; margin-bottom: 1rem; }
+.empty-state h3 { font-family: 'Playfair Display', serif; font-size: 24px; font-weight: 400; margin-bottom: 0.5rem; }
+.empty-state p { font-size: 14px; color: var(--text-muted); margin-bottom: 1.5rem; }
+.empty-state button { padding: 0.75rem 1.75rem; background: var(--gold); border: none; border-radius: 10px; font-family: 'Jost', sans-serif; font-size: 14px; font-weight: 500; color: var(--bg); cursor: pointer; }
+.empty-state button:hover { background: var(--gold-light); }
+
+/* Sidebar extras */
+.sidebar-upgrade { background: var(--gold-dim); border: 1px solid rgba(201,168,76,0.2); border-radius: 12px; padding: 1.1rem; margin-top: auto; }
+.sidebar-upgrade .su-title { font-size: 13px; font-weight: 500; margin-bottom: 0.35rem; color: var(--gold); }
+.sidebar-upgrade .su-body  { font-size: 12px; color: var(--text-muted); line-height: 1.5; }
+.btn-logout { width: 100%; margin-top: 0.75rem; padding: 0.6rem; background: transparent; border: 1px solid var(--border); border-radius: 8px; font-family: 'Jost', sans-serif; font-size: 12px; color: var(--text-dim); cursor: pointer; transition: color 0.2s, border-color 0.2s; }
+.btn-logout:hover { color: var(--rose); border-color: var(--rose); }
+
+/* Modals */
+.modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.7); backdrop-filter: blur(4px); z-index: 200; align-items: center; justify-content: center; padding: 2rem; }
+.modal-overlay.open { display: flex; }
+.modal-box { background: var(--bg2); border: 1px solid var(--border2); border-radius: 20px; max-width: 560px; width: 100%; overflow: hidden; animation: slideUp 0.3s ease both; max-height: 90vh; overflow-y: auto; }
+.modal-box.wide { max-width: 640px; }
+.modal-gold-bar { height: 4px; background: linear-gradient(90deg, var(--gold) 0%, var(--gold-light) 60%, transparent 100%); }
+.modal-inner { padding: 2rem 2.25rem 2.5rem; }
+.modal-label { font-size: 10px; letter-spacing: 3px; text-transform: uppercase; color: var(--gold); margin-bottom: 0.5rem; }
+.modal-title { font-family: 'Playfair Display', serif; font-size: 28px; font-weight: 400; margin-bottom: 0.4rem; }
+.modal-date  { font-size: 13px; color: var(--text-muted); margin-bottom: 1.5rem; }
+.modal-message { font-size: 17px; font-weight: 300; line-height: 1.9; color: var(--text); font-style: italic; background: var(--surface); border-left: 3px solid var(--gold); padding: 1.25rem 1.5rem; border-radius: 0 10px 10px 0; margin-bottom: 1.5rem; }
+.modal-mood-chip { display: inline-flex; align-items: center; gap: 6px; background: var(--gold-dim); color: var(--gold); font-size: 13px; padding: 5px 14px; border-radius: 100px; margin-bottom: 1.5rem; }
+.modal-close-btn { width: 100%; padding: 0.85rem; background: var(--surface); border: 1px solid var(--border2); border-radius: 10px; font-family: 'Jost', sans-serif; font-size: 14px; color: var(--text-muted); cursor: pointer; transition: background 0.2s, color 0.2s; }
+.modal-close-btn:hover { background: var(--surface2); color: var(--text); }
+.locked-modal-body { text-align: center; padding: 0.5rem 0; }
+.locked-icon { font-size: 52px; margin-bottom: 1.25rem; display: block; }
+.locked-modal-body h3 { font-family: 'Playfair Display', serif; font-size: 28px; font-weight: 400; margin-bottom: 0.5rem; }
+.locked-modal-body p { font-size: 14px; color: var(--text-muted); margin-bottom: 2rem; }
+.countdown-row { display: flex; justify-content: center; gap: 1.5rem; margin: 1.75rem 0; }
+.cd-unit { text-align: center; }
+.cd-num  { font-family: 'Playfair Display', serif; font-size: 42px; color: var(--gold); display: block; line-height: 1; }
+.cd-label { font-size: 10px; letter-spacing: 2px; text-transform: uppercase; color: var(--text-dim); margin-top: 4px; display: block; }
+textarea.field-input { resize: vertical; min-height: 120px; line-height: 1.7; }
+textarea.field-input::placeholder { font-style: italic; color: var(--text-dim); }
+select.field-input { appearance: none; -webkit-appearance: none; }
+.mood-grid { display: flex; flex-wrap: wrap; gap: 8px; }
+.mood-pill { padding: 6px 14px; border: 1px solid var(--border2); border-radius: 100px; font-family: 'Jost', sans-serif; font-size: 13px; color: var(--text-muted); cursor: pointer; background: transparent; transition: all 0.2s; }
+.mood-pill:hover { border-color: var(--gold); color: var(--gold); }
+.mood-pill.sel { background: var(--gold); border-color: var(--gold); color: var(--bg); }
+.create-field-label { font-size: 11px; letter-spacing: 2px; text-transform: uppercase; font-weight: 500; color: var(--text-muted); display: block; margin-bottom: 0.5rem; }
+.create-input { width: 100%; background: var(--surface); border: 1px solid var(--border2); border-radius: 12px; padding: 0.8rem 1rem; font-family: 'Jost', sans-serif; font-size: 15px; font-weight: 300; color: var(--text); outline: none; transition: border-color 0.2s; }
+.create-input:focus { border-color: var(--gold); }
+.create-input::placeholder { color: var(--text-dim); }
+.toast { position: fixed; bottom: 2rem; right: 2rem; background: var(--surface); border: 1px solid var(--gold); border-radius: 12px; padding: 1rem 1.5rem; display: flex; align-items: center; gap: 10px; font-size: 14px; z-index: 999; animation: slideUp 0.3s ease both; transition: opacity 0.3s; }
+.toast-icon { color: var(--gold); font-size: 18px; }
+.toast.hide { opacity: 0; }
+@media (max-width: 900px) {
+  .auth-right { width: 100%; }
+  .auth-left  { display: none; }
+  .stats-row  { grid-template-columns: repeat(2,1fr); }
+  .dash-sidebar { display: none; }
+  .dash-content { padding: 1.5rem; }
+}
+</style>
+</head>
+<body>
+
+<div class="stars-bg" id="stars"></div>
+
+<!-- ════════════ PAGE: LOGIN ════════════ -->
+<div class="page auth-page active" id="page-login">
+  <div class="auth-left">
+    <div class="brand"><div class="brand-mark"></div><span class="brand-name">Vaulted</span></div>
+    <div class="auth-hero">
+      <div class="auth-hero-tag">✦ Digital Time Capsule</div>
+      <h1>Write to your<br/><em>future self.</em></h1>
+      <p>Seal your thoughts, goals, and memories today. Unlock them when the time is right.</p>
+    </div>
+    <div class="preview-cards">
+      <div class="preview-card">
+        <div class="pc-top"><div class="pc-lock locked">🔒</div><span class="pc-title">A letter to myself</span><span class="pc-date">Dec 31, 2025</span></div>
+        <div class="pc-bar"><div class="pc-bar-fill" style="width:72%"></div></div>
+        <div class="pc-msg">Dear future me, I hope by now you've finally taken that trip to…</div>
+      </div>
+      <div class="preview-card">
+        <div class="pc-top"><div class="pc-lock unlocked">📬</div><span class="pc-title">One year later</span><span class="pc-date">May 1, 2026 · Unlocked</span></div>
+        <div class="pc-bar"><div class="pc-bar-fill" style="width:100%;background:#6b8f71"></div></div>
+        <div class="pc-msg">"I'm proud of you for getting started. You had no idea what was coming…"</div>
+      </div>
+    </div>
+  </div>
+  <div class="auth-right">
+    <div class="form-header"><h2>Welcome back</h2><p>Sign in to open your vault</p></div>
+    <div class="form-msg error" id="login-error"></div>
+    <div class="field"><label>Email address</label><input type="email" placeholder="you@example.com" id="login-email" autocomplete="email"/></div>
+    <div class="field"><label>Password</label><input type="password" placeholder="••••••••••" id="login-password" autocomplete="current-password" onkeydown="if(event.key==='Enter')handleLogin()"/></div>
+    <button class="btn-primary" id="login-btn" onclick="handleLogin()">
+      <span class="spinner" id="login-spinner"></span>
+      <span id="login-btn-text">Open My Vault →</span>
+    </button>
+    <div class="form-footer">Don't have an account? <a onclick="goTo('signup')">Create one</a></div>
+  </div>
+</div>
+
+<!-- ════════════ PAGE: SIGNUP ════════════ -->
+<div class="page auth-page" id="page-signup">
+  <div class="auth-left">
+    <div class="brand"><div class="brand-mark"></div><span class="brand-name">Vaulted</span></div>
+    <div class="auth-hero">
+      <div class="auth-hero-tag">✦ Start your journey</div>
+      <h1>Capture who<br/>you are <em>today.</em></h1>
+      <p>Your future self will thank you. Create your first time capsule in minutes.</p>
+    </div>
+    <div class="how-card">
+      <div style="font-size:11px;letter-spacing:3px;text-transform:uppercase;color:var(--text-muted);margin-bottom:1.25rem;">How it works</div>
+      <div class="how-step"><div class="how-num">1</div><div><div class="how-title">Write your message</div><div class="how-desc">Pour your thoughts, goals, or a letter to yourself</div></div></div>
+      <div class="how-step"><div class="how-num">2</div><div><div class="how-title">Set the unlock date</div><div class="how-desc">Choose a day, month, or years into the future</div></div></div>
+      <div class="how-step"><div class="how-num">3</div><div><div class="how-title">Receive your past self</div><div class="how-desc">Reflect on how you've grown</div></div></div>
+    </div>
+  </div>
+  <div class="auth-right">
+    <div class="form-header"><h2>Create your vault</h2><p>Free forever — your memories, your timeline</p></div>
+    <div class="form-msg error" id="signup-error"></div>
+    <div class="field-row">
+      <div class="field"><label>First name</label><input type="text" placeholder="Ada" id="signup-first" autocomplete="given-name"/></div>
+      <div class="field"><label>Last name</label><input type="text" placeholder="Lovelace" id="signup-last" autocomplete="family-name"/></div>
+    </div>
+    <div class="field"><label>Email address</label><input type="email" placeholder="you@example.com" id="signup-email" autocomplete="email"/></div>
+    <div class="field">
+      <label>Password</label>
+      <input type="password" placeholder="••••••••••" id="signup-password" autocomplete="new-password" oninput="checkPasswordStrength(this.value)" onkeydown="if(event.key==='Enter')handleSignup()"/>
+      <div class="pw-strength">
+        <div class="pw-strength-bar"><div class="pw-strength-fill" id="pw-fill"></div></div>
+        <div class="pw-strength-text" id="pw-text">Enter a password</div>
+      </div>
+    </div>
+    <div class="field"><label>Confirm password</label><input type="password" placeholder="••••••••••" id="signup-confirm" autocomplete="new-password" onkeydown="if(event.key==='Enter')handleSignup()"/></div>
+    <button class="btn-primary" id="signup-btn" onclick="handleSignup()">
+      <span class="spinner" id="signup-spinner"></span>
+      <span id="signup-btn-text">Create My Vault →</span>
+    </button>
+    <div class="form-footer">Already have a vault? <a onclick="goTo('login')">Sign in</a></div>
+  </div>
+</div>
+
+<!-- ════════════ PAGE: DASHBOARD ════════════ -->
+<div class="page" id="page-dashboard">
+  <nav class="dash-nav">
+    <div class="dash-brand"><div class="dash-brand-mark">✦</div><span class="dash-brand-name">Vaulted</span></div>
+    <button class="nav-btn-new" onclick="openCreate()">+ New Capsule</button>
+    <div class="nav-avatar" id="nav-avatar" title="">?</div>
+  </nav>
+  <div class="dash-main">
+    <aside class="dash-sidebar">
+      <div class="sidebar-label">My Vault</div>
+      <div class="sidebar-item active"><span class="si-icon">🏠</span> Overview <span class="sidebar-count" id="sb-total">0</span></div>
+      <div class="sidebar-item"><span class="si-icon">🔒</span> Sealed <span class="sidebar-count" id="sb-sealed">0</span></div>
+      <div class="sidebar-item"><span class="si-icon">📬</span> Unlocked <span class="sidebar-count" id="sb-unlocked">0</span></div>
+      <div class="sidebar-item"><span class="si-icon">⏳</span> Opening Soon <span class="sidebar-count" id="sb-soon">0</span></div>
+      <div class="sidebar-upgrade" id="sidebar-next" style="display:none;">
+        <div class="su-title">Opening soon</div>
+        <div class="su-body" id="sidebar-next-text"></div>
+      </div>
+      <button class="btn-logout" onclick="handleLogout()">Sign out</button>
+    </aside>
+    <main class="dash-content">
+      <div class="dash-greeting" id="dash-greeting">
+        <div class="dash-greeting-tag">✦ Welcome back</div>
+        <h2>Good <em id="dash-time-of-day">evening</em>, <em id="dash-name">—</em></h2>
+        <p id="dash-subtitle">Loading your vault…</p>
+      </div>
+      <div class="stats-row">
+        <div class="stat-card gold-accent"><div class="stat-label">Total Capsules</div><div class="stat-value" id="stat-total">—</div><div class="stat-sub" id="stat-total-sub"></div></div>
+        <div class="stat-card sage-accent"><div class="stat-label">Unlocked</div><div class="stat-value" id="stat-unlocked">—</div><div class="stat-sub">Ready to read</div></div>
+        <div class="stat-card rose-accent"><div class="stat-label">Opening Soon</div><div class="stat-value" id="stat-soon">—</div><div class="stat-sub">Within 30 days</div></div>
+        <div class="stat-card dim-accent"><div class="stat-label">Sealed</div><div class="stat-value" id="stat-sealed">—</div><div class="stat-sub">Still waiting</div></div>
+      </div>
+      <div class="section-header"><div class="section-title">Your Capsules</div></div>
+      <div class="capsules-grid" id="capsules-grid">
+        <div style="grid-column:1/-1;display:flex;align-items:center;justify-content:center;height:120px;color:var(--text-dim);font-size:14px;">Loading your capsules…</div>
+      </div>
+    </main>
+  </div>
+</div>
+
+<!-- MODAL: Unlocked Capsule -->
+<div class="modal-overlay" id="modal-open">
+  <div class="modal-box">
+    <div class="modal-gold-bar"></div>
+    <div class="modal-inner">
+      <div class="modal-label">✦ Unlocked Capsule</div>
+      <div class="modal-title" id="modal-open-title"></div>
+      <div class="modal-date"  id="modal-open-date"></div>
+      <div class="modal-message" id="modal-open-message"></div>
+      <div class="modal-mood-chip" id="modal-open-mood" style="display:none;"></div>
+      <button class="modal-close-btn" onclick="closeModal('modal-open')">Close capsule</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: Locked Capsule -->
+<div class="modal-overlay" id="modal-locked">
+  <div class="modal-box">
+    <div class="modal-gold-bar"></div>
+    <div class="modal-inner">
+      <div class="locked-modal-body">
+        <span class="locked-icon">🔒</span>
+        <h3 id="locked-title"></h3>
+        <p id="locked-subtitle"></p>
+        <div class="countdown-row">
+          <div class="cd-unit"><span class="cd-num" id="cd-days">0</span><span class="cd-label">days</span></div>
+          <div class="cd-unit"><span class="cd-num" id="cd-hours">00</span><span class="cd-label">hours</span></div>
+          <div class="cd-unit"><span class="cd-num" id="cd-mins">00</span><span class="cd-label">minutes</span></div>
+          <div class="cd-unit"><span class="cd-num" id="cd-secs">00</span><span class="cd-label">seconds</span></div>
+        </div>
+        <div style="width:100%;background:var(--surface);border-radius:6px;height:4px;overflow:hidden;margin-bottom:1.5rem;">
+          <div id="locked-progress-fill" style="height:100%;background:linear-gradient(90deg,var(--gold),var(--gold-light));border-radius:6px;transition:width 0.5s;"></div>
+        </div>
+        <button class="modal-close-btn" onclick="closeModal('modal-locked')">Come back when it's time</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: Create Capsule -->
+<div class="modal-overlay" id="modal-create">
+  <div class="modal-box wide">
+    <div class="modal-gold-bar"></div>
+    <div class="modal-inner">
+      <div class="modal-label">✦ New Time Capsule</div>
+      <div class="modal-title">Seal a memory</div>
+      <div style="height:1.5rem;"></div>
+      <div class="form-msg error" id="create-error"></div>
+      <div style="margin-bottom:1rem;">
+        <label class="create-field-label">Capsule title</label>
+        <input type="text" class="create-input" placeholder="e.g. One year from now…" id="new-title" maxlength="120"/>
+      </div>
+      <div style="margin-bottom:1rem;">
+        <label class="create-field-label">Your message</label>
+        <textarea class="create-input field-input" id="new-msg" placeholder="Dear future me, today I am feeling…" maxlength="10000"></textarea>
+      </div>
+      <div style="display:flex;gap:1rem;margin-bottom:1rem;">
+        <div style="flex:1;">
+          <label class="create-field-label">Unlock date</label>
+          <input type="date" id="new-date" class="create-input"/>
+        </div>
+        <div style="flex:1;">
+          <label class="create-field-label">Notify me</label>
+          <select id="new-notify" class="create-input field-input">
+            <option value="on_unlock">On unlock day</option>
+            <option value="1_week_before">1 week before</option>
+            <option value="none">Don't notify</option>
+          </select>
+        </div>
+      </div>
+      <div style="margin-bottom:1.5rem;">
+        <label class="create-field-label">Mood right now</label>
+        <div class="mood-grid" id="mood-grid"></div>
+      </div>
+      <div style="display:flex;gap:1rem;">
+        <button onclick="closeModal('modal-create')" style="flex:1;padding:0.85rem;background:transparent;border:1px solid var(--border2);border-radius:10px;font-family:'Jost',sans-serif;font-size:14px;color:var(--text-muted);cursor:pointer;">Cancel</button>
+        <button onclick="sealCapsule()" id="seal-btn" style="flex:2;padding:0.85rem;background:var(--gold);border:none;border-radius:10px;font-family:'Jost',sans-serif;font-size:15px;font-weight:500;color:var(--bg);cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;">
+          <span class="spinner" id="seal-spinner"></span>
+          <span id="seal-btn-text">✦ Seal This Capsule</span>
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast" style="display:none;">
+  <span class="toast-icon">✦</span>
+  <span id="toast-text"></span>
+</div>
+
+<script>
+// ══════════════════════════════════════════════════════
+//  SUPABASE CONFIG  ← paste your values here
+// ══════════════════════════════════════════════════════
+const SUPABASE_URL      = 'https://udbjpjjbzlamfjogwiqt.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVkYmpwampiemxhbWZqb2d3aXF0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc3MjU2MTMsImV4cCI6MjA5MzMwMTYxM30.lZ4E3_789_JfXhP_5NMJD7cXhqrstlX9ICGKQWN3pj4';
+
+// ── Init Supabase client ──────────────────────────────
+const { createClient } = supabase;
+const db = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+// ══════════════════════════════════════════════════════
+//  APP STATE
+// ══════════════════════════════════════════════════════
+const appState = {
+  user:           null,
+  session:        null,
+  capsules:       [],
+  moods:          [],
+  selectedMoodId: null
+};
+
+// ── Stars ─────────────────────────────────────────────
+(function initStars() {
+  const el = document.getElementById('stars');
+  for (let i = 0; i < 80; i++) {
+    const s = document.createElement('div');
+    s.className = 'star';
+    const sz = Math.random() * 2 + 0.5;
+    s.style.cssText = `width:${sz}px;height:${sz}px;top:${Math.random()*100}%;left:${Math.random()*100}%;opacity:${Math.random()*0.4+0.1};--dur:${(Math.random()*4+2).toFixed(1)}s;--delay:-${(Math.random()*4).toFixed(1)}s;`;
+    el.appendChild(s);
+  }
+})();
+
+// ── Page navigation ───────────────────────────────────
+function goTo(page) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  const el = document.getElementById('page-' + page);
+  if (el) { el.classList.add('active'); window.scrollTo(0,0); }
+}
+
+// ── Loading state ─────────────────────────────────────
+function setLoading(btnId, spinnerId, textId, loading, defaultText) {
+  const btn  = document.getElementById(btnId);
+  const spin = document.getElementById(spinnerId);
+  const txt  = document.getElementById(textId);
+  if (!btn) return;
+  btn.disabled = loading;
+  if (spin) spin.style.display = loading ? 'inline-block' : 'none';
+  if (txt)  txt.textContent    = loading ? 'Please wait…' : defaultText;
+}
+
+function showMsg(id, text, type = 'error') {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.textContent = text;
+  el.className = `form-msg ${type} show`;
+}
+function hideMsg(id) {
+  const el = document.getElementById(id);
+  if (el) el.classList.remove('show');
+}
+
+function checkPasswordStrength(pw) {
+  const fill = document.getElementById('pw-fill');
+  const text = document.getElementById('pw-text');
+  let score = 0;
+  if (pw.length >= 8)  score++;
+  if (pw.length >= 12) score++;
+  if (/[A-Z]/.test(pw)) score++;
+  if (/[0-9]/.test(pw)) score++;
+  if (/[^A-Za-z0-9]/.test(pw)) score++;
+  const levels = [
+    { pct: '0%',   color: 'transparent', label: 'Enter a password' },
+    { pct: '20%',  color: 'var(--rose)',  label: 'Too weak' },
+    { pct: '40%',  color: '#e09030',      label: 'Weak' },
+    { pct: '65%',  color: 'var(--gold)',  label: 'Fair' },
+    { pct: '85%',  color: '#a0c878',      label: 'Good' },
+    { pct: '100%', color: 'var(--sage)',  label: 'Strong' },
+  ];
+  const l = pw.length === 0 ? levels[0] : levels[Math.min(score, 5)];
+  fill.style.width      = l.pct;
+  fill.style.background = l.color;
+  text.textContent      = l.label;
+  text.style.color      = l.color === 'transparent' ? 'var(--text-dim)' : l.color;
+}
+
+// ══════════════════════════════════════════════════════
+//  AUTH  — using Supabase Auth directly
+// ══════════════════════════════════════════════════════
+
+async function handleSignup() {
+  hideMsg('signup-error');
+  const first   = document.getElementById('signup-first').value.trim();
+  const last    = document.getElementById('signup-last').value.trim();
+  const email   = document.getElementById('signup-email').value.trim();
+  const pw      = document.getElementById('signup-password').value;
+  const confirm = document.getElementById('signup-confirm').value;
+
+  if (!first || !last || !email || !pw || !confirm) { showMsg('signup-error', 'Please fill in all fields.'); return; }
+  if (pw.length < 8)  { showMsg('signup-error', 'Password must be at least 8 characters.'); return; }
+  if (pw !== confirm) { showMsg('signup-error', 'Passwords do not match.'); return; }
+
+  setLoading('signup-btn', 'signup-spinner', 'signup-btn-text', true, 'Create My Vault →');
+  try {
+    const { data, error } = await db.auth.signUp({
+      email,
+      password: pw,
+      options: { data: { first_name: first, last_name: last } }
+    });
+    if (error) throw error;
+
+    // Supabase may require email confirmation — check session
+    if (data.session) {
+      appState.session = data.session;
+      appState.user    = data.user;
+      await enterDashboard(data.user);
+    } else {
+      // Email confirmation required
+      showMsg('signup-error', '✦ Check your email to confirm your account, then sign in.', 'success');
+    }
+  } catch (err) {
+    showMsg('signup-error', err.message || 'Signup failed.');
+  } finally {
+    setLoading('signup-btn', 'signup-spinner', 'signup-btn-text', false, 'Create My Vault →');
+  }
+}
+
+async function handleLogin() {
+  hideMsg('login-error');
+  const email    = document.getElementById('login-email').value.trim();
+  const password = document.getElementById('login-password').value;
+  if (!email || !password) { showMsg('login-error', 'Please fill in both fields.'); return; }
+
+  setLoading('login-btn', 'login-spinner', 'login-btn-text', true, 'Open My Vault →');
+  try {
+    const { data, error } = await db.auth.signInWithPassword({ email, password });
+    if (error) throw error;
+    appState.session = data.session;
+    appState.user    = data.user;
+    await enterDashboard(data.user);
+  } catch (err) {
+    showMsg('login-error', err.message || 'Login failed.');
+  } finally {
+    setLoading('login-btn', 'login-spinner', 'login-btn-text', false, 'Open My Vault →');
+  }
+}
+
+async function handleLogout() {
+  await db.auth.signOut();
+  appState.user     = null;
+  appState.session  = null;
+  appState.capsules = [];
+  goTo('login');
+}
+
+// ══════════════════════════════════════════════════════
+//  DASHBOARD SETUP
+// ══════════════════════════════════════════════════════
+async function enterDashboard(user) {
+  const meta = user.user_metadata || {};
+  const firstName = meta.first_name || user.email?.split('@')[0] || 'there';
+  const lastName  = meta.last_name  || '';
+  const initials  = ((firstName[0] || '') + (lastName[0] || '')).toUpperCase() || '?';
+
+  document.getElementById('nav-avatar').textContent = initials;
+  document.getElementById('dash-name').textContent  = firstName;
+
+  const h = new Date().getHours();
+  document.getElementById('dash-time-of-day').textContent = h < 12 ? 'morning' : h < 17 ? 'afternoon' : 'evening';
+
+  goTo('dashboard');
+  await Promise.all([loadMoods(), loadCapsules()]);
+}
+
+// ══════════════════════════════════════════════════════
+//  MOODS
+// ══════════════════════════════════════════════════════
+async function loadMoods() {
+  try {
+    const { data, error } = await db.from('moods').select('*').order('id');
+    if (error) throw error;
+    appState.moods = data || [];
+    renderMoodGrid();
+  } catch (err) {
+    console.error('Moods load failed:', err.message);
+    // Use fallback moods if table doesn't exist
+    appState.moods = [
+      { id: 1, label: 'Hopeful',     emoji: '✨' },
+      { id: 2, label: 'Grateful',    emoji: '🌿' },
+      { id: 3, label: 'Excited',     emoji: '⚡' },
+      { id: 4, label: 'Reflective',  emoji: '🌊' },
+      { id: 5, label: 'Determined',  emoji: '💪' },
+      { id: 6, label: 'Content',     emoji: '🌸' },
+      { id: 7, label: 'Anxious',     emoji: '😰' },
+      { id: 8, label: 'Uncertain',   emoji: '🌫️' },
+    ];
+    renderMoodGrid();
+  }
+}
+
+function renderMoodGrid() {
+  const grid = document.getElementById('mood-grid');
+  grid.innerHTML = appState.moods.map(m =>
+    `<button class="mood-pill" data-mood-id="${m.id}" onclick="toggleMood(this)">${m.emoji || ''} ${escHtml(m.label)}</button>`
+  ).join('');
+}
+
+function toggleMood(el) {
+  document.querySelectorAll('.mood-pill').forEach(p => p.classList.remove('sel'));
+  el.classList.add('sel');
+  appState.selectedMoodId = el.dataset.moodId;
+}
+
+// ══════════════════════════════════════════════════════
+//  CAPSULES
+// ══════════════════════════════════════════════════════
+function enrichCapsule(c) {
+  const now      = new Date();
+  const unlock   = new Date(c.unlock_date);
+  const created  = new Date(c.created_at);
+  const total    = unlock - created;
+  const elapsed  = now - created;
+  const progress = Math.min(100, Math.max(0, Math.round((elapsed / total) * 100)));
+  const daysLeft = Math.ceil((unlock - now) / 86_400_000);
+
+  let status = 'sealed';
+  if (unlock <= now)       status = 'unlocked';
+  else if (daysLeft <= 30) status = 'soon';
+
+  return { ...c, status, progress };
+}
+
+async function loadCapsules() {
+  try {
+    const { data, error } = await db
+      .from('capsules')
+      .select('*, moods(emoji, label)')
+      .order('unlock_date', { ascending: true });
+
+    if (error) throw error;
+
+    appState.capsules = (data || []).map(enrichCapsule);
+    updateStats();
+    renderCapsules();
+  } catch (err) {
+    console.error('Capsules load failed:', err.message);
+    document.getElementById('dash-subtitle').textContent = 'Could not load capsules: ' + err.message;
+  }
+}
+
+function updateStats() {
+  const caps     = appState.capsules;
+  const total    = caps.length;
+  const unlocked = caps.filter(c => c.status === 'unlocked').length;
+  const soon     = caps.filter(c => c.status === 'soon').length;
+  const sealed   = caps.filter(c => c.status === 'sealed').length;
+
+  document.getElementById('stat-total').textContent    = total;
+  document.getElementById('stat-unlocked').textContent = unlocked;
+  document.getElementById('stat-soon').textContent     = soon;
+  document.getElementById('stat-sealed').textContent   = sealed;
+  document.getElementById('sb-total').textContent      = total;
+  document.getElementById('sb-sealed').textContent     = sealed;
+  document.getElementById('sb-unlocked').textContent   = unlocked;
+  document.getElementById('sb-soon').textContent       = soon;
+
+  const month = new Date().toLocaleString('default', { month: 'long' });
+  document.getElementById('stat-total-sub').textContent = `${month} total`;
+
+  const parts = [];
+  if (soon     > 0) parts.push(`${soon} opening soon`);
+  if (unlocked > 0) parts.push(`${unlocked} ready to read`);
+  document.getElementById('dash-subtitle').textContent = parts.length ? parts.join(' · ') : 'Your vault is ready.';
+
+  // Next capsule in sidebar
+  const next = caps.find(c => c.status !== 'unlocked');
+  const el   = document.getElementById('sidebar-next');
+  if (next) {
+    const daysUntil = Math.ceil((new Date(next.unlock_date) - new Date()) / 86400000);
+    document.getElementById('sidebar-next-text').innerHTML =
+      `"${escHtml(next.title)}" unlocks in <strong style="color:var(--text);">${daysUntil} day${daysUntil !== 1 ? 's' : ''}</strong>`;
+    el.style.display = 'block';
+  } else {
+    el.style.display = 'none';
+  }
+}
+
+function renderCapsules() {
+  const grid    = document.getElementById('capsules-grid');
+  const capsules = appState.capsules;
+
+  if (!capsules.length) {
+    grid.innerHTML = `
+      <div class="empty-state">
+        <span class="es-icon">📭</span>
+        <h3>Your vault is empty</h3>
+        <p>Write your first message to your future self.</p>
+        <button onclick="openCreate()">+ Create your first capsule</button>
+      </div>`;
+    return;
+  }
+
+  grid.innerHTML = capsules.map(c => {
+    const isUnlocked = c.status === 'unlocked';
+    const isSoon     = c.status === 'soon';
+    const badge = isUnlocked
+      ? '<span class="card-badge badge-unlocked">📬 Unlocked</span>'
+      : isSoon
+        ? '<span class="card-badge badge-soon">⏳ Opening soon</span>'
+        : '<span class="card-badge badge-locked">🔒 Sealed</span>';
+    const iconCls = isUnlocked ? 'unlocked' : isSoon ? 'soon' : 'locked';
+    const iconE   = isUnlocked ? '📬' : isSoon ? '⏳' : '🔒';
+    const fillCls = isUnlocked ? 'fill-sage' : isSoon ? 'fill-rose' : 'fill-gold';
+    const mood    = c.moods?.emoji && c.moods?.label ? `${c.moods.emoji} ${escHtml(c.moods.label)}` : '—';
+    const preview = isUnlocked && c.message ? escHtml(c.message.slice(0, 120)) : 'Sealed message…';
+
+    return `
+      <div class="capsule-card ${isUnlocked ? 'is-unlocked' : ''}" onclick="openCapsule('${c.id}')">
+        <div class="card-top">
+          <div class="card-icon ${iconCls}">${iconE}</div>
+          <div class="card-meta">
+            <div class="card-title">${escHtml(c.title)}</div>
+            <div class="card-created">Sealed ${fmtDate(c.created_at)}</div>
+          </div>
+          ${badge}
+        </div>
+        <div class="card-preview ${isUnlocked ? '' : 'blurred'}">${preview}</div>
+        <div class="card-progress">
+          <div class="progress-label"><span>Progress to unlock</span><span>${c.progress}%</span></div>
+          <div class="progress-bar"><div class="progress-fill ${fillCls}" style="width:${c.progress}%"></div></div>
+        </div>
+        <div class="card-footer">
+          <span class="card-mood">${mood}</span>
+          <span class="card-unlock-date">🗓 ${fmtDate(c.unlock_date, true)}</span>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+// ══════════════════════════════════════════════════════
+//  OPEN CAPSULE
+// ══════════════════════════════════════════════════════
+async function openCapsule(id) {
+  let capsule = appState.capsules.find(c => c.id === id);
+  if (!capsule) return;
+
+  // If unlocked, fetch full message from DB (we may not have stored it in state)
+  if (capsule.status === 'unlocked') {
+    const { data, error } = await db
+      .from('capsules')
+      .select('*, moods(emoji, label)')
+      .eq('id', id)
+      .single();
+    if (!error && data) capsule = enrichCapsule(data);
+  }
+
+  if (capsule.status === 'unlocked') {
+    document.getElementById('modal-open-title').textContent   = capsule.title;
+    document.getElementById('modal-open-date').textContent    = `Written ${fmtDate(capsule.created_at)} · Unlocked ${fmtDate(capsule.unlock_date, true)}`;
+    document.getElementById('modal-open-message').textContent = capsule.message || '';
+    const moodChip = document.getElementById('modal-open-mood');
+    if (capsule.moods?.emoji) {
+      moodChip.textContent = `${capsule.moods.emoji} ${capsule.moods.label}`;
+      moodChip.style.display = 'inline-flex';
+    } else {
+      moodChip.style.display = 'none';
+    }
+    document.getElementById('modal-open').classList.add('open');
+  } else {
+    document.getElementById('locked-title').textContent    = capsule.title;
+    document.getElementById('locked-subtitle').textContent = `Sealed ${fmtDate(capsule.created_at)} · Opens ${fmtDate(capsule.unlock_date, true)}`;
+    document.getElementById('locked-progress-fill').style.width = (capsule.progress || 0) + '%';
+    document.getElementById('modal-locked').classList.add('open');
+    startCountdown(capsule.unlock_date);
+  }
+}
+
+// ── Countdown ─────────────────────────────────────────
+let countdownInterval = null;
+function startCountdown(dateStr) {
+  if (countdownInterval) clearInterval(countdownInterval);
+  function tick() {
+    const diff = new Date(dateStr) - new Date();
+    if (diff <= 0) { ['days','hours','mins','secs'].forEach(k => document.getElementById('cd-'+k).textContent = '0'); return; }
+    document.getElementById('cd-days').textContent  = Math.floor(diff / 86400000);
+    document.getElementById('cd-hours').textContent = String(Math.floor((diff % 86400000) / 3600000)).padStart(2,'0');
+    document.getElementById('cd-mins').textContent  = String(Math.floor((diff % 3600000) / 60000)).padStart(2,'0');
+    document.getElementById('cd-secs').textContent  = String(Math.floor((diff % 60000) / 1000)).padStart(2,'0');
+  }
+  tick();
+  countdownInterval = setInterval(tick, 1000);
+}
+
+// ══════════════════════════════════════════════════════
+//  CREATE CAPSULE
+// ══════════════════════════════════════════════════════
+function openCreate() {
+  hideMsg('create-error');
+  document.getElementById('new-title').value  = '';
+  document.getElementById('new-msg').value    = '';
+  document.getElementById('new-date').value   = '';
+  document.getElementById('new-notify').value = 'on_unlock';
+  appState.selectedMoodId = null;
+  document.querySelectorAll('.mood-pill').forEach(p => p.classList.remove('sel'));
+  document.getElementById('modal-create').classList.add('open');
+}
+
+async function sealCapsule() {
+  hideMsg('create-error');
+  const title   = document.getElementById('new-title').value.trim();
+  const message = document.getElementById('new-msg').value.trim();
+  const date    = document.getElementById('new-date').value;
+  const notify  = document.getElementById('new-notify').value;
+
+  if (!title)   { showMsg('create-error', 'Please enter a title.'); return; }
+  if (!message) { showMsg('create-error', 'Please write your message.'); return; }
+  if (!date)    { showMsg('create-error', 'Please choose an unlock date.'); return; }
+  if (new Date(date) <= new Date()) { showMsg('create-error', 'Unlock date must be in the future.'); return; }
+
+  setLoading('seal-btn', 'seal-spinner', 'seal-btn-text', true, '✦ Seal This Capsule');
+  try {
+    const { data, error } = await db.from('capsules').insert({
+      user_id:     appState.user.id,
+      title,
+      message,
+      mood_id:     appState.selectedMoodId ? parseInt(appState.selectedMoodId) : null,
+      unlock_date: date,
+      notify_pref: notify
+    }).select().single();
+
+    if (error) throw error;
+
+    closeModal('modal-create');
+    showToast('✦ Capsule sealed — see you on the other side!');
+    await loadCapsules();
+  } catch (err) {
+    showMsg('create-error', err.message || 'Could not seal capsule.');
+  } finally {
+    setLoading('seal-btn', 'seal-spinner', 'seal-btn-text', false, '✦ Seal This Capsule');
+  }
+}
+
+// ══════════════════════════════════════════════════════
+//  MODALS & TOAST
+// ══════════════════════════════════════════════════════
+function closeModal(id) {
+  document.getElementById(id).classList.remove('open');
+  if (id === 'modal-locked' && countdownInterval) { clearInterval(countdownInterval); countdownInterval = null; }
+}
+document.querySelectorAll('.modal-overlay').forEach(el => {
+  el.addEventListener('click', e => { if (e.target === el) closeModal(el.id); });
+});
+
+let toastTimeout = null;
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  document.getElementById('toast-text').textContent = msg;
+  t.style.display = 'flex';
+  t.classList.remove('hide');
+  if (toastTimeout) clearTimeout(toastTimeout);
+  toastTimeout = setTimeout(() => {
+    t.classList.add('hide');
+    setTimeout(() => t.style.display = 'none', 300);
+  }, 3500);
+}
+
+// ── Utils ─────────────────────────────────────────────
+function escHtml(str) {
+  if (!str) return '';
+  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function fmtDate(str, short = false) {
+  if (!str) return '—';
+  const d = new Date(str);
+  if (isNaN(d)) return str;
+  return d.toLocaleDateString('en-GB', short
+    ? { day: 'numeric', month: 'short', year: 'numeric' }
+    : { day: 'numeric', month: 'long', year: 'numeric' }
+  );
+}
+
+// ══════════════════════════════════════════════════════
+//  AUTO-LOGIN on page load
+// ══════════════════════════════════════════════════════
+window.addEventListener('DOMContentLoaded', async () => {
+  // Listen for auth state changes (handles refresh tokens automatically)
+  db.auth.onAuthStateChange(async (event, session) => {
+    if (session && event === 'SIGNED_IN') {
+      appState.session = session;
+      appState.user    = session.user;
+    }
+  });
+
+  // Check for existing session
+  const { data: { session } } = await db.auth.getSession();
+  if (session) {
+    appState.session = session;
+    appState.user    = session.user;
+    await enterDashboard(session.user);
+  }
+});
+</script>
+</body>
+</html>
